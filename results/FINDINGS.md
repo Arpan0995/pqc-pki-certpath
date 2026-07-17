@@ -94,3 +94,89 @@ one TLS record** (16,384 B), and their chains exceed the **JDK default maximum h
 `jdk.tls.maxHandshakeMessageSize` is raised. SLH-DSA-128s and all ML-DSA parameter sets stay under the
 per-certificate record limit; the larger ML-DSA and composite chains still cross the 32 KB handshake
 limit at depth. The parameter set, not just the family, decides whether a certificate fits.
+
+---
+
+# Part II — Breakage and path discovery
+
+Part I compared measured sizes to documented limits and validated chains handed over in order. Part II
+replaces the arithmetic with real handshakes, and measures path *discovery* over the cross-certified
+hierarchies Federal PKI actually uses. Full output in [`TLS-READINESS.md`](TLS-READINESS.md) and
+[`PATH-BUILDING.md`](PATH-BUILDING.md).
+
+## 6. Java cannot authenticate with PQC certificates yet — the first wall is auth, not size (RQ6)
+
+Driving real TLS 1.3 handshakes on the loopback interface, **every** ML-DSA, SLH-DSA and composite leaf
+fails on **both** JSSE providers; the classical controls all pass.
+
+| | SunJSSE | BCJSSE |
+|---|---|---|
+| ECDSA P-256, RSA-3072 | authenticates | authenticates |
+| all ML-DSA / SLH-DSA / composite | `handshake_failure` | `handshake_failure` |
+
+The cause is authentication negotiation, not size. A `-Djavax.net.debug` trace shows the JSSE
+`ClientHello` advertising only classical `signature_algorithms` — `ecdsa_*`, `ed25519/448`, `rsa_pss_*`,
+`rsa_pkcs1_*` — with no ML-DSA or SLH-DSA codepoint at all. A server holding a post-quantum leaf has no
+scheme to negotiate, so it aborts. The TLS 1.3 signature-scheme codepoints for these algorithms are still
+IETF drafts (`draft-ietf-tls-mldsa`, `draft-tls-reddy-slhdsa`) and are unimplemented in JDK 21 and in
+BouncyCastle's JSSE provider 1.85. **PQC certificate authentication in standard Java is not slow or large
+— it does not complete at all.**
+
+## 7. The size wall is exactly where Part I predicted (RQ7)
+
+Holding the algorithm classical (so authentication succeeds) and growing the chain to each real
+post-quantum chain's measured size isolates size as the only variable:
+
+| Chain sized like | ~Transmitted bytes | Handshake |
+|---|---|---|
+| ML-DSA-44/65/87 | 7.8–14.8 KB | completes |
+| SLH-DSA-128s | 16.1 KB | completes |
+| all composites | 8–15 KB | completes |
+| **SLH-DSA-128f** | **34.6 KB** | **fails — size limit** |
+| **SLH-DSA-192f** | **71.8 KB** | **fails — size limit** |
+| **SLH-DSA-256f** | **100.2 KB** | **fails — size limit** |
+
+The failure is precise: `SSLProtocolException: The size of the handshake message (34588) exceeds the
+maximum allowed size (32768)`, the default `jdk.tls.maxHandshakeMessageSize`. This confirms Part I's
+threshold analysis empirically: the SLH-DSA `f` variants are exactly the chains that cross the 32 KB
+default, and everything through ML-DSA-87 and SLH-DSA-128s fits. Raising the property admits them, so it
+is a configuration ceiling — but it is the out-of-the-box default, and it is the *second* wall, met the
+moment PQC authentication (the first wall) is fixed.
+
+## 8. Path building is robust to cross-cert branching (RQ8 — a negative result)
+
+The plausible worry was that cross-certification — where one CA name carries many issuer certificates —
+would make `CertPathBuilder` explore combinatorially and re-verify candidates, with the post-quantum
+signature cost amplifying every wasted step. **It does not.** Sweeping a bridged name's candidate-issuer
+count from 1 to 32, discovery time barely moves (median, µs):
+
+| Algorithm | k=1 | k=32 | growth |
+|---|---|---|---|
+| ECDSA P-256 | 588 | 546 | 0.9× |
+| ML-DSA-65 | 171 | 176 | 1.0× |
+| SLH-DSA-256f | 4,718 | 4,598 | 1.0× |
+
+The JDK builder prunes candidates by name and trust-anchor priority before verifying signatures, so a
+dead-end cross-certificate costs almost nothing and the slow SLH-DSA verifier is never invoked on it.
+This is reassuring for cross-certified FPKI: the Federal Bridge model does not create a path-discovery
+blow-up in the JDK, for classical or post-quantum certificates alike. (Caveat: the decoys here dead-end
+after one hop; deeper decoy chains could stress the builder differently — a natural next probe.)
+
+## 9. But discovery still pays the PQC verify cost with depth (RQ9)
+
+On a realistic depth-five Federal-Bridge-shaped path (Common Policy Root → Federal Bridge → agency CA →
+sub-CA → leaf, with decoy partner cross-certificates), discovery cost tracks the per-signature
+verification along the found path:
+
+| Algorithm | build (median) |
+|---|---|
+| RSA-3072 | 185 µs |
+| ML-DSA-65 | 323 µs |
+| ML-DSA-87 | 514 µs |
+| SLH-DSA-128f | 6.1 ms |
+| SLH-DSA-256f | 9.3 ms |
+
+So the "bytes *and* CPU" character of SLH-DSA (finding 2) reappears at the path-discovery layer: a deep
+government hierarchy authenticated with SLH-DSA costs milliseconds to build a path for, roughly 50× a
+classical one, entirely from verification along the depth-five path. ML-DSA stays sub-millisecond, in
+keeping with its size-bound (not CPU-bound) profile.

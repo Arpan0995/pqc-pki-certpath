@@ -48,6 +48,26 @@ On size, the story is uniform and dramatic:
 The exact figures, threshold crossings, and per-hypothesis verdicts are regenerated into
 [`results/PKI-RESULTS.md`](results/PKI-RESULTS.md) and [`results/pki-results.csv`](results/pki-results.csv).
 
+## Part II: from threshold arithmetic to demonstrated breakage
+
+Part I compared measured sizes to documented limits and validated chains already in hand. Part II closes
+those gaps with real handshakes and real path discovery. Two findings, in
+[`results/TLS-READINESS.md`](results/TLS-READINESS.md), [`results/PATH-BUILDING.md`](results/PATH-BUILDING.md),
+and [`results/FINDINGS.md`](results/FINDINGS.md):
+
+- **Java can't authenticate with PQC certificates at all yet — before size is even the problem.** Driving
+  real TLS 1.3 handshakes, *every* ML-DSA/SLH-DSA/composite leaf fails on **both** JSSE providers
+  (`SunJSSE` and BouncyCastle's `BCJSSE`) with `handshake_failure`; classical controls pass. The cause is
+  authentication, not size: JSSE advertises only classical `signature_algorithms` (the PQC TLS 1.3
+  codepoints are still IETF drafts). And when a chain is grown to real PQC sizes with classical signatures,
+  the SLH-DSA-`f`-sized chains (~34 KB+) fail with `SSLProtocolException: ... exceeds the maximum allowed
+  size (32768)` — the two walls a deployment hits, in order.
+- **Path building is robust to cross-cert branching, but inherits the PQC verify cost with depth.** Over
+  Federal-Bridge-shaped cross-certified stores, `CertPathBuilder` discovery time is flat as a bridged
+  name's candidate-issuer count grows 1→32 (the JDK prunes by name before verifying — reassuring for
+  FPKI). But a realistic depth-5 bridged path costs ~9 ms to discover for SLH-DSA-256F vs ~0.2 ms for
+  RSA-3072: the "bytes *and* CPU" cost of SLH-DSA reappears at the discovery layer.
+
 ## What is measured
 
 For each algorithm and tier depth (2/3/4 = root→leaf, root→intermediate→leaf, and one deeper):
@@ -81,13 +101,19 @@ differences are attributable to the cryptography, not to certificate content.
 ```bash
 mvn test                       # unit tests: builds and PKIX-validates every algorithm
 
-mvn package                    # build the shaded jar
-java -jar target/pqc-pki.jar   # full benchmark: all algorithms × tiers 2,3,4 -> results/
+mvn package                    # build the shaded jar (Part I sizes + validation)
+java -jar target/pqc-pki.jar   # full benchmark: all algorithms × tiers 2,3,4 -> results/PKI-RESULTS.md
+
+# Part II (run from the classpath; each writes its own report into results/)
+mvn -q dependency:build-classpath -Dmdep.outputFile=cp.txt
+java -cp target/classes:$(cat cp.txt) org.pqcpki.tls.TlsReadiness    # -> results/TLS-READINESS.md
+java -cp target/classes:$(cat cp.txt) org.pqcpki.build.PathBuilding  # -> results/PATH-BUILDING.md
 ```
 
 `Benchmark` options: `--algorithms=a,b`, `--tiers=2,3,4`, `--seed=N`, `--warmup=N`, `--iterations=N`,
 `--out=DIR`, `--no-timing` (sizes only). Certificate sizes are deterministic and host-independent;
-validation times are host-specific, so re-run locally for timing figures on your hardware.
+validation, handshake, and path-build times are host-specific, so re-run locally for timing figures on
+your hardware.
 
 ## Toolchain
 
@@ -98,15 +124,17 @@ recorded in each results file.
 ## Layout
 
 ```
-docs/EXPERIMENT-DESIGN.md   Pre-registered design (read this first)
+docs/EXPERIMENT-DESIGN.md   Pre-registered design + Part II (read this first)
 src/main/java/org/pqcpki/
   algo/        The algorithm registry (classical, ML-DSA, SLH-DSA, composite)
-  pki/         Key generation and multi-tier X.509 hierarchy construction
+  pki/         Key generation, X.509 issuance, multi-tier hierarchy construction
   measure/     Size decomposition, robust statistics, the validation benchmark
   validate/    The JDK PKIX path validator wrapper
   report/      Size thresholds, hypothesis scoring, Markdown + CSV output
-  Benchmark.java   CLI entry point
-results/       Benchmark output (Markdown report + CSV)
+  tls/         Part II: real TLS 1.3 handshake readiness + size-breakage experiment
+  build/       Part II: cross-certified/FPKI models + CertPathBuilder path-discovery benchmark
+  Benchmark.java        Part I entry point (sizes + validation)
+results/       PKI-RESULTS.md + csv (Part I), TLS-READINESS.md + PATH-BUILDING.md (Part II), FINDINGS.md
 ```
 
 ## Sibling projects

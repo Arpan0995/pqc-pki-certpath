@@ -195,16 +195,82 @@ at all — was resolved before committing to the design. A probe confirmed, on B
 
 These probe figures are illustrative; the committed harness regenerates all reported numbers.
 
-## 12. Non-goals
+## 12. Non-goals (Part I)
 
-- Not a TLS handshake benchmark (that is the handshake layer, studied elsewhere).
+- Not a TLS handshake *performance* benchmark (handshake latency/throughput is the handshake layer,
+  studied elsewhere). Part II does drive real handshakes, but to observe *breakage*, not to time them.
 - Not a revocation study (OCSP/CRL network cost is disabled to isolate cryptographic validation).
 - Not a security/robustness study of the parsers (that is the sibling `pqc-decode-fuzzing` project).
 - Not constant-time or side-channel analysis (sibling `pqc-jvm-sidechannel`).
 
 ---
 
-*Pre-registration: research questions, hypotheses, the algorithm set, the certificate profile, and the
-size thresholds are fixed before data collection so that the results — including a confirmation of the
-"bytes, not CPU" hypothesis — carry the weight of a prediction rather than a rationalisation. Any change
-made once measurement begins will be recorded in an amendments section, as in the sibling projects.*
+# Part II — Extended study: breakage and path discovery
+
+The Part I measurements confirmed the size and validation costs but, by construction, only *compared
+measured sizes to documented limits* and only *validated chains already in hand*. Part II closes those
+two gaps with experiments added after Part I, motivated directly by the weakest points of the first
+study: it replaces threshold arithmetic with demonstrated breakage, and it measures path *discovery*
+over the cross-certified hierarchies that Federal PKI actually uses. These experiments were designed and
+run after Part I; their questions are stated here and their findings reported honestly, including a
+negative result.
+
+## 13. TLS handshake readiness and breakage (RQ6, RQ7)
+
+- **RQ6 (authentication readiness).** Can a standard Java TLS 1.3 stack — the JDK's `SunJSSE` and
+  BouncyCastle's `BCJSSE` — actually complete a handshake authenticated by an ML-DSA or SLH-DSA
+  certificate today?
+- **RQ7 (size breakage).** At what chain size does a TLS handshake fail on message size alone, and which
+  of the measured post-quantum chains cross it?
+
+**Method.** Drive real loopback TLS 1.3 handshakes. For RQ6, a leaf signed by each algorithm, against
+each provider, with classical algorithms as the control; classify each outcome as success, an
+authentication failure, or a size failure. For RQ7, hold the algorithm classical (so authentication
+succeeds) and grow the certificate chain — via a padding extension — to the measured size of each real
+post-quantum chain, isolating size as the only variable. The two axes are orthogonal by design: RQ6
+fails independent of size, RQ7 fails independent of algorithm.
+
+**Found.** RQ6: *no* post-quantum handshake completes on either provider — all fail with
+`handshake_failure`, because JSSE advertises only classical `signature_algorithms` (the PQC TLS 1.3
+signature-scheme codepoints are still IETF drafts, unimplemented). RQ7: chains up to ~16 KB complete;
+the SLH-DSA `f` variants (≥ ~34 KB) fail with `SSLProtocolException: ... exceeds the maximum allowed
+size (32768)`, the JDK default `jdk.tls.maxHandshakeMessageSize`. So a Java PQC deployment meets an
+authentication wall first, and a size wall the moment that is removed.
+
+## 14. Path building over cross-certified hierarchies (RQ8, RQ9)
+
+- **RQ8 (branching cost).** When a bridged CA name carries many issuer certificates — the Federal Bridge
+  situation — does `CertPathBuilder` path discovery blow up with the branching factor, and does the
+  post-quantum signature cost amplify it?
+- **RQ9 (realistic FPKI cost).** What does discovery cost on a realistic depth-five Federal-Bridge-shaped
+  path, per algorithm?
+
+**Method.** Build cross-certified stores where one CA name is issued a certificate by *k* different roots
+(only one anchored), and sweep *k*; and a Federal-Bridge-shaped hierarchy (Common Policy Root → Federal
+Bridge → agency CA → sub-CA → leaf) with decoy partner cross-certificates. Benchmark
+`CertPathBuilder.build` discovery time with warmup and repeats.
+
+**Found.** RQ8 (a **negative result**, and a reassuring one): discovery is essentially flat in *k* — from
+1 to 32 candidate issuers, build time moves < 1.1× even for SLH-DSA. The JDK builder prunes candidates by
+name and trust-anchor priority before verifying signatures, so cross-certificate branching does *not*
+create a post-quantum-amplified blow-up. RQ9: discovery cost is dominated by the per-signature
+verification along the discovered path and scales with path depth — the depth-five SLH-DSA-256F path
+costs ~9 ms to discover versus ~0.2 ms for RSA-3072, reinforcing that SLH-DSA is expensive on CPU as well
+as size, now at the discovery layer too.
+
+## 15. Positioning against related work
+
+The closest related work (an experimental study of ML-DSA/SLH-DSA *signature placement* in TLS 1.3
+certificate hierarchies) is in C, over OpenSSL/liboqs, measures handshake *performance*, and explicitly
+does not address CertPath validation, path building, cross-certification/bridge CAs, or failure. Federal
+PKI runs a real post-quantum cross-certification testbed (an ML-DSA-87 root and Bridge CA for path
+discovery). This project is complementary and distinct: it is the **Java/JDK** measurement, it covers
+**path building** and **cross-certified/FPKI** topologies, and it reports **demonstrated breakage** — the
+axes that body of work leaves open.
+
+---
+
+*Pre-registration: the Part I research questions, hypotheses, algorithm set, certificate profile, and
+size thresholds were fixed before data collection so the results carry the weight of a prediction. Part
+II was added afterwards and is reported as such — including its negative result (RQ8) stated plainly
+rather than reframed.*
