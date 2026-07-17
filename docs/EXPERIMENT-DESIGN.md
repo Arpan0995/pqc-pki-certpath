@@ -264,7 +264,23 @@ one more verification), at the algorithm's per-verify price, so the depth-five S
 ~9 ms versus ~0.2 ms for RSA-3072. The depth experiment also surfaced a third JDK ceiling: the default
 `PKIXBuilderParameters` `maxPathLength` of 5 rejects deeper cross-certified paths outright.
 
-## 15. Positioning against related work
+## 15. JDK version comparison: JDK 21 vs JDK 27 / JEP 527 (RQ10)
+
+- **RQ10.** Does the newest JDK — JDK 27, the first to ship post-quantum TLS (JEP 527, hybrid ML-KEM key
+  exchange) — change the authentication readiness result of §13?
+
+**Method.** Run the identical TLS readiness harness on JDK 27 EA, and read the supported `SSLParameters`
+(named groups and signature schemes) off each JDK's default provider to see which halves of the
+transition each supports.
+
+**Found.** No: PQC certificate authentication still fails on JDK 27, and the capability read shows why —
+JDK 27 adds ML-KEM to the named groups (`X25519MLKEM768`) but its signature schemes remain entirely
+classical. JEP 527 delivers the *key exchange* half of the post-quantum transition and leaves the
+*authentication* half — the certificate/PKI layer this study measures — untouched. The comparison makes
+the readiness finding robust to "the newest JDK fixes it": the release that introduced post-quantum TLS
+did so only for confidentiality, not authentication.
+
+## 16. Positioning against related work
 
 The closest related work (an experimental study of ML-DSA/SLH-DSA *signature placement* in TLS 1.3
 certificate hierarchies) is in C, over OpenSSL/liboqs, measures handshake *performance*, and explicitly

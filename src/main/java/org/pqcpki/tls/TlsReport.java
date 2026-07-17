@@ -33,7 +33,9 @@ public final class TlsReport {
         out.append("| TLS | 1.3, loopback, endpoint identification and revocation disabled |\n");
         out.append("| `jdk.tls.maxHandshakeMessageSize` | ")
                 .append(System.getProperty("jdk.tls.maxHandshakeMessageSize", "default (32768)"))
-                .append(" |\n\n");
+                .append(" |\n");
+        out.append("| JSSE PQC support (this JDK) | ")
+                .append(JsseCapabilities.ofDefaultProvider().summary()).append(" |\n\n");
     }
 
     private static void appendHeadline(StringBuilder out, List<TlsReadiness.AuthRow> auth,

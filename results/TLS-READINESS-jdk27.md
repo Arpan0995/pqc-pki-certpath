@@ -1,19 +1,19 @@
 # TLS Readiness — Can Java Authenticate with Post-Quantum Certificates?
 
-Generated 2026-07-17T21:34:36.813211Z by `TlsReadiness`.
+Generated 2026-07-17T21:34:44.953636Z by `TlsReadiness`.
 
 | Setting | Value |
 |---|---|
 | BouncyCastle | 1.85 |
-| JVM | OpenJDK 64-Bit Server VM 21.0.9 (Microsoft) |
+| JVM | OpenJDK 64-Bit Server VM 27-ea (Oracle Corporation) |
 | Host | Mac OS X 27.0 aarch64, 10 cpus |
 | TLS | 1.3, loopback, endpoint identification and revocation disabled |
 | `jdk.tls.maxHandshakeMessageSize` | default (32768) |
-| JSSE PQC support (this JDK) | key exchange = none; signatures = not reported by this JDK (classical, observed from ClientHello) |
+| JSSE PQC support (this JDK) | key exchange = X25519MLKEM768 (present); signatures = none (classical only) |
 
 ## Headline
 
-**Post-quantum certificate authentication does not work on Java's TLS stack yet.** Across both JSSE providers, 0 of 22 post-quantum handshake attempts succeeded; the classical controls succeeded 4 of 4. Separately, on the size axis (holding the algorithm classical so authentication succeeds), a chain the size of a real SLH-DSA-SHA2-128F chain (~34,572 B) is the smallest tested that crosses `jdk.tls.maxHandshakeMessageSize` (32,768 B) and fails before validation.
+**Post-quantum certificate authentication does not work on Java's TLS stack yet.** Across both JSSE providers, 0 of 22 post-quantum handshake attempts succeeded; the classical controls succeeded 4 of 4. Separately, on the size axis (holding the algorithm classical so authentication succeeds), a chain the size of a real SLH-DSA-SHA2-128F chain (~34,574 B) is the smallest tested that crosses `jdk.tls.maxHandshakeMessageSize` (32,768 B) and fails before validation.
 
 The two failures are independent: PQC certificates fail on **authentication** regardless of size, and large chains fail on **size** regardless of algorithm. A post-quantum deployment meets the first wall today and the second the moment the first is removed.
 
@@ -45,18 +45,18 @@ ECDSA certificates (which authenticate) grown to the measured size of each algor
 
 | Chain sized like | ~Transmitted bytes | Handshake |
 |---|---:|---|
-| ECDSA P-256 | 707 B | completes |
-| RSA-3072 | 1,919 B | completes |
-| ML-DSA-44 | 7,807 B | completes |
+| ECDSA P-256 | 706 B | completes |
+| RSA-3072 | 1,920 B | completes |
+| ML-DSA-44 | 7,806 B | completes |
 | ML-DSA-65 | 10,864 B | completes |
-| ML-DSA-87 | 14,781 B | completes |
-| SLH-DSA-SHA2-128F | 34,572 B | **size limit** |
-| SLH-DSA-SHA2-128S | 16,110 B | completes |
+| ML-DSA-87 | 14,782 B | completes |
+| SLH-DSA-SHA2-128F | 34,574 B | **size limit** |
+| SLH-DSA-SHA2-128S | 16,109 B | completes |
 | SLH-DSA-SHA2-192F | 71,756 B | **size limit** |
-| SLH-DSA-SHA2-256F | 100,173 B | **size limit** |
-| MLDSA44-ECDSA-P256-SHA256 | 8,073 B | completes |
-| MLDSA65-ECDSA-P384-SHA512 | 11,258 B | completes |
-| MLDSA65-RSA3072-PSS-SHA512 | 12,423 B | completes |
+| SLH-DSA-SHA2-256F | 100,174 B | **size limit** |
+| MLDSA44-ECDSA-P256-SHA256 | 8,072 B | completes |
+| MLDSA65-ECDSA-P384-SHA512 | 11,259 B | completes |
+| MLDSA65-RSA3072-PSS-SHA512 | 12,424 B | completes |
 | MLDSA87-ECDSA-P521-SHA512 | 15,317 B | completes |
 
 The threshold is `jdk.tls.maxHandshakeMessageSize` (default 32,768 B). Chains at or below it complete; larger ones are rejected with `SSLProtocolException: ... exceeds the maximum allowed size`. Raising the property admits larger chains, so this is a configuration ceiling, not a hard cryptographic limit — but it is the out-of-the-box default a deployment meets first.

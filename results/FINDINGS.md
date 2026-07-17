@@ -197,3 +197,32 @@ sets it unlimited so it can measure past the default). Deep FPKI hierarchies —
 bridge, an agency principal CA, a sub-CA, plus cross-cert hops — reach this depth, so the default is a
 third out-of-the-box ceiling a government-scale post-quantum deployment can meet, after PQC
 authentication support (§6) and the TLS handshake-message size (§7).
+
+## 11. JDK 27 and JEP 527: the KEM half arrives, the signature half does not (RQ6 revisited)
+
+The obvious objection to §6 is that it measures a moving target: perhaps the newest JDK fixes it. It does
+not — and the way it does not is itself the finding. **JDK 27** ships JEP 527, "Post-Quantum Hybrid Key
+Exchange for TLS 1.3", so it is the first JDK to add post-quantum cryptography to the TLS stack. Running
+the identical readiness harness on JDK 27 EA (build 31), **every post-quantum certificate still fails to
+authenticate**, exactly as on JDK 21 ([`TLS-READINESS-jdk27.md`](TLS-READINESS-jdk27.md)).
+
+Reading the supported `SSLParameters` off each JDK's default provider shows precisely why:
+
+| Capability | JDK 21 | JDK 27 (EA+31) |
+|---|---|---|
+| ML-KEM hybrid key exchange (`X25519MLKEM768`) | absent | **present** (JEP 527) |
+| PQC signature scheme (ML-DSA / SLH-DSA) | absent | **absent** |
+| Advertised signature schemes | classical only¹ | classical only (21 schemes, all classical) |
+| PQC certificate authentication | fails | **fails** |
+
+¹ JDK 21 does not report signature schemes through `SSLParameters`; its ClientHello advertises only
+`ecdsa_*`, `ed25519/448`, `rsa_pss_*`, `rsa_pkcs1_*`, observed by handshake trace.
+
+The transition has two halves, and JDK 27 has shipped exactly one. **Key exchange** is done: ML-KEM is a
+first-class named group, so the confidentiality side of post-quantum TLS works out of the box.
+**Authentication** is untouched: there is no ML-DSA or SLH-DSA signature scheme, so the certificate/PKI
+layer — the entire subject of this study, and where the size and validation costs measured in Parts I–II
+live — remains classical-only even in the release that introduced post-quantum TLS. The signature-scheme
+codepoints are still IETF drafts (`draft-ietf-tls-mldsa`, `draft-tls-reddy-slhdsa`), and until they land
+in JSSE, the sizes this project measures cannot yet be paid on the wire — the certificates that would
+carry them cannot complete a handshake on any shipping JDK.

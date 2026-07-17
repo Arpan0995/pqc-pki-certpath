@@ -51,7 +51,7 @@ The exact figures, threshold crossings, and per-hypothesis verdicts are regenera
 ## Part II: from threshold arithmetic to demonstrated breakage
 
 Part I compared measured sizes to documented limits and validated chains already in hand. Part II closes
-those gaps with real handshakes and real path discovery. Two findings, in
+those gaps with real handshakes and real path discovery. Findings in
 [`results/TLS-READINESS.md`](results/TLS-READINESS.md), [`results/PATH-BUILDING.md`](results/PATH-BUILDING.md),
 and [`results/FINDINGS.md`](results/FINDINGS.md):
 
@@ -70,6 +70,12 @@ and [`results/FINDINGS.md`](results/FINDINGS.md):
   bridged path costs ~9 ms to discover for SLH-DSA-256F vs ~0.2 ms for RSA-3072 — the "bytes *and* CPU"
   cost of SLH-DSA, at the discovery layer. (A third JDK ceiling also appears: the default PKIX
   `maxPathLength` of 5 rejects deeper cross-certified paths outright.)
+- **The newest JDK doesn't fix it — and how it doesn't is the point.** JDK 27 ships JEP 527, the first
+  post-quantum TLS support, yet PQC certificate authentication *still* fails there
+  ([`results/TLS-READINESS-jdk27.md`](results/TLS-READINESS-jdk27.md)). Reading each JDK's supported
+  `SSLParameters`: JDK 27 adds ML-KEM key exchange (`X25519MLKEM768`) but its signature schemes stay
+  entirely classical. JEP 527 delivers the *key-exchange* half of the transition and leaves the
+  *authentication* half — the certificate/PKI layer this study measures — untouched.
 
 ## What is measured
 
