@@ -143,40 +143,57 @@ default, and everything through ML-DSA-87 and SLH-DSA-128s fits. Raising the pro
 is a configuration ceiling — but it is the out-of-the-box default, and it is the *second* wall, met the
 moment PQC authentication (the first wall) is fixed.
 
-## 8. Path building is robust to cross-cert branching (RQ8 — a negative result)
+## 8. Path building is robust to cross-cert branching — even with multi-hop decoys (RQ8, negative result)
 
 The plausible worry was that cross-certification — where one CA name carries many issuer certificates —
 would make `CertPathBuilder` explore combinatorially and re-verify candidates, with the post-quantum
-signature cost amplifying every wasted step. **It does not.** Sweeping a bridged name's candidate-issuer
-count from 1 to 32, discovery time barely moves (median, µs):
+signature cost amplifying every wasted step. **It does not.** The test is deliberately hard: each of the
+*k* candidate branches is **three intermediates deep** before dead-ending at an untrusted root, so a
+decoy cannot be dismissed in one hop. Sweeping *k* from 1 to 32 (median build µs):
 
-| Algorithm | k=1 | k=32 | growth |
-|---|---|---|---|
-| ECDSA P-256 | 588 | 546 | 0.9× |
-| ML-DSA-65 | 171 | 176 | 1.0× |
-| SLH-DSA-256f | 4,718 | 4,598 | 1.0× |
+| Algorithm | k=1 | k=32 | growth | verify speed |
+|---|---|---|---|---|
+| ECDSA P-256 | 1,561 | 1,475 | 0.9× | fast |
+| RSA-3072 | 245 | 552 | 2.3× | fast |
+| ML-DSA-65 | 436 | 662 | 1.5× | fast |
+| SLH-DSA-128f | 7,695 | 8,646 | 1.1× | slow |
+| SLH-DSA-256f | 11,776 | 15,679 | 1.3× | slow |
 
-The JDK builder prunes candidates by name and trust-anchor priority before verifying signatures, so a
-dead-end cross-certificate costs almost nothing and the slow SLH-DSA verifier is never invoked on it.
-This is reassuring for cross-certified FPKI: the Federal Bridge model does not create a path-discovery
-blow-up in the JDK, for classical or post-quantum certificates alike. (Caveat: the decoys here dead-end
-after one hop; deeper decoy chains could stress the builder differently — a natural next probe.)
+The decisive observation is the *ordering*: the **slowest verifiers (SLH-DSA) are the least amplified**,
+while the cheap-to-verify RSA/ML-DSA grow more in relative terms. If branching forced the builder to
+verify dead-end candidates, the slow verifier would be hit hardest — the exact opposite of what we see.
+So the modest growth is store-search overhead (more certificates to index and name-match), not signature
+checks: the JDK builder finds the reaching branch without walking, or verifying, the multi-hop decoys.
+This is reassuring for cross-certified FPKI — the Federal Bridge model creates no path-discovery blow-up
+in the JDK, classical or post-quantum.
 
-## 9. But discovery still pays the PQC verify cost with depth (RQ9)
+## 9. The cost is in path depth, and there the PQC verify price is paid in full (RQ9)
 
-On a realistic depth-five Federal-Bridge-shaped path (Common Policy Root → Federal Bridge → agency CA →
-sub-CA → leaf, with decoy partner cross-certificates), discovery cost tracks the per-signature
-verification along the found path:
+Holding branching fixed and lengthening the discovered path from 4 to 7 certificates, build time rises
+~1.8× **across every algorithm** — uniform in ratio because each added certificate is one more signature
+to verify, so cost tracks path length times the per-verify price. That price is where the algorithms
+diverge. On the realistic depth-five Federal-Bridge path (Common Policy Root → Federal Bridge → agency CA
+→ sub-CA → leaf, with decoy partner cross-certificates):
 
 | Algorithm | build (median) |
 |---|---|
 | RSA-3072 | 185 µs |
-| ML-DSA-65 | 323 µs |
-| ML-DSA-87 | 514 µs |
-| SLH-DSA-128f | 6.1 ms |
-| SLH-DSA-256f | 9.3 ms |
+| ML-DSA-65 | 411 µs |
+| ML-DSA-87 | 624 µs |
+| SLH-DSA-128f | 6.2 ms |
+| SLH-DSA-256f | 9.6 ms |
 
 So the "bytes *and* CPU" character of SLH-DSA (finding 2) reappears at the path-discovery layer: a deep
-government hierarchy authenticated with SLH-DSA costs milliseconds to build a path for, roughly 50× a
+government hierarchy authenticated with SLH-DSA costs milliseconds to discover a path for, ~50× a
 classical one, entirely from verification along the depth-five path. ML-DSA stays sub-millisecond, in
 keeping with its size-bound (not CPU-bound) profile.
+
+## 10. A third JDK ceiling: the default maximum path length (RQ8/RQ9, incidental)
+
+The depth experiment surfaced a limit worth naming alongside the TLS ones. `PKIXBuilderParameters`
+defaults `maxPathLength` to **5** non-self-issued intermediate certificates; a cross-certified path five
+intermediates deep is rejected before any signature is checked unless the caller raises it (the harness
+sets it unlimited so it can measure past the default). Deep FPKI hierarchies — a Common Policy Root, a
+bridge, an agency principal CA, a sub-CA, plus cross-cert hops — reach this depth, so the default is a
+third out-of-the-box ceiling a government-scale post-quantum deployment can meet, after PQC
+authentication support (§6) and the TLS handshake-message size (§7).

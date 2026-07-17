@@ -30,14 +30,19 @@ import java.util.List;
 public final class PathBuilding {
 
     private static final long SEED = 20260717;
-    private static final int WARMUP = 100;
-    private static final int ITERATIONS = 1000;
+    // Path building is milliseconds for the deep SLH-DSA cases, so a few hundred iterations already give
+    // a stable median without the run taking tens of minutes.
+    private static final int WARMUP = 40;
+    private static final int ITERATIONS = 250;
 
     /** Representative algorithms: classical baselines, a lattice choice, and the fast/slow hash extremes. */
     private static final List<String> ALGORITHMS = List.of(
             "ecdsa-p256", "rsa-3072", "ml-dsa-65", "slh-dsa-sha2-128f", "slh-dsa-sha2-256f");
 
     private static final List<Integer> BRANCHING = List.of(1, 2, 4, 8, 16, 32);
+    private static final List<Integer> DEPTHS = List.of(2, 3, 4, 5);
+    private static final int BREADTH_SWEEP_DEPTH = 3;
+    private static final int DEPTH_SWEEP_K = 8;
     private static final int FEDERAL_DECOYS = 4;
 
     private PathBuilding() {
@@ -51,22 +56,25 @@ public final class PathBuilding {
         System.out.printf("Path building: %s%n", Environment.jvm());
         CrossCertModel model = new CrossCertModel(SEED);
 
-        List<PathBuildResult> branching = runBranching(model);
+        List<PathBuildResult> breadth = runBreadthSweep(model);
+        List<PathBuildResult> depth = runDepthSweep(model);
         List<PathBuildResult> federal = runFederalBridge(model);
 
-        String report = PathBuildReport.render(branching, federal, WARMUP, ITERATIONS);
+        String report = PathBuildReport.render(breadth, depth, federal, WARMUP, ITERATIONS);
         Path file = out.resolve("PATH-BUILDING.md");
         Files.writeString(file, report);
         System.out.printf("%nWrote %s%n", file);
     }
 
-    private static List<PathBuildResult> runBranching(CrossCertModel model) {
-        System.out.println("\n[1/2] Branching sweep — build time vs number of candidate issuers");
+    /** Breadth: how many multi-hop candidate branches a bridged name has, at a fixed decoy depth. */
+    private static List<PathBuildResult> runBreadthSweep(CrossCertModel model) {
+        System.out.printf("%n[1/3] Breadth sweep — build time vs candidate issuers (each %d hops deep)%n",
+                BREADTH_SWEEP_DEPTH);
         List<PathBuildResult> results = new ArrayList<>();
         for (String id : ALGORITHMS) {
             AlgorithmSpec spec = Algorithms.byId(id);
             for (int k : BRANCHING) {
-                results.add(measure(model.branching(spec, k)));
+                results.add(measure(model.branching(spec, k, BREADTH_SWEEP_DEPTH)));
             }
             PathBuildResult k1 = results.get(results.size() - BRANCHING.size());
             PathBuildResult kMax = results.get(results.size() - 1);
@@ -78,8 +86,28 @@ public final class PathBuilding {
         return results;
     }
 
+    /** Depth: how deep the discovered path is, at a fixed branching factor. */
+    private static List<PathBuildResult> runDepthSweep(CrossCertModel model) {
+        System.out.printf("%n[2/3] Depth sweep — build time vs path depth (k=%d candidate branches)%n",
+                DEPTH_SWEEP_K);
+        List<PathBuildResult> results = new ArrayList<>();
+        for (String id : ALGORITHMS) {
+            AlgorithmSpec spec = Algorithms.byId(id);
+            for (int d : DEPTHS) {
+                results.add(measure(model.branching(spec, DEPTH_SWEEP_K, d)));
+            }
+            PathBuildResult d0 = results.get(results.size() - DEPTHS.size());
+            PathBuildResult dMax = results.get(results.size() - 1);
+            System.out.printf("    %-20s depth=%d..%d: %.1f -> %.1f us  (%.1fx)%n",
+                    spec.displayName(), DEPTHS.get(0), DEPTHS.get(DEPTHS.size() - 1),
+                    d0.buildMicros().median(), dMax.buildMicros().median(),
+                    dMax.buildMicros().median() / d0.buildMicros().median());
+        }
+        return results;
+    }
+
     private static List<PathBuildResult> runFederalBridge(CrossCertModel model) {
-        System.out.println("\n[2/2] Federal Bridge — realistic depth-5 cross-certified path");
+        System.out.println("\n[3/3] Federal Bridge — realistic depth-5 cross-certified path");
         List<PathBuildResult> results = new ArrayList<>();
         for (String id : Algorithms.ids()) {
             AlgorithmSpec spec = Algorithms.byId(id);

@@ -63,10 +63,13 @@ and [`results/FINDINGS.md`](results/FINDINGS.md):
   the SLH-DSA-`f`-sized chains (~34 KB+) fail with `SSLProtocolException: ... exceeds the maximum allowed
   size (32768)` — the two walls a deployment hits, in order.
 - **Path building is robust to cross-cert branching, but inherits the PQC verify cost with depth.** Over
-  Federal-Bridge-shaped cross-certified stores, `CertPathBuilder` discovery time is flat as a bridged
-  name's candidate-issuer count grows 1→32 (the JDK prunes by name before verifying — reassuring for
-  FPKI). But a realistic depth-5 bridged path costs ~9 ms to discover for SLH-DSA-256F vs ~0.2 ms for
-  RSA-3072: the "bytes *and* CPU" cost of SLH-DSA reappears at the discovery layer.
+  Federal-Bridge-shaped cross-certified stores — with **multi-hop decoy branches** that can't be pruned
+  in one step — `CertPathBuilder` discovery time stays flat as a bridged name's candidate-issuer count
+  grows 1→32. The tell is that the *slowest* verifier (SLH-DSA) is the *least* amplified, so the builder
+  isn't verifying dead ends (reassuring for FPKI). The cost is instead in path depth: a realistic depth-5
+  bridged path costs ~9 ms to discover for SLH-DSA-256F vs ~0.2 ms for RSA-3072 — the "bytes *and* CPU"
+  cost of SLH-DSA, at the discovery layer. (A third JDK ceiling also appears: the default PKIX
+  `maxPathLength` of 5 rejects deeper cross-certified paths outright.)
 
 ## What is measured
 

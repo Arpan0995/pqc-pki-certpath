@@ -41,6 +41,11 @@ public final class PathBuildBenchmark {
             this.parameters.addCertStore(
                     CertStore.getInstance("Collection", new CollectionCertStoreParameters(scenario.pool())));
             this.parameters.setRevocationEnabled(false);
+            // Lift the default maximum path length (PKIXParameters defaults to 5 non-self-issued
+            // intermediates). Deep cross-certified FPKI paths exceed it, and capping it here would make
+            // the depth experiment measure the JDK's default limit rather than the cost of depth. The
+            // default is itself a deployment ceiling — reported separately, not silently enforced here.
+            this.parameters.setMaxPathLength(-1);
             this.builder = CertPathBuilder.getInstance("PKIX");
         } catch (InvalidAlgorithmParameterException | NoSuchAlgorithmException e) {
             throw new IllegalStateException("could not set up path building for " + scenario.name(), e);

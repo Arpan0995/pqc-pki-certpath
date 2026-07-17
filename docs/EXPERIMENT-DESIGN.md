@@ -245,18 +245,24 @@ authentication wall first, and a size wall the moment that is removed.
 - **RQ9 (realistic FPKI cost).** What does discovery cost on a realistic depth-five Federal-Bridge-shaped
   path, per algorithm?
 
-**Method.** Build cross-certified stores where one CA name is issued a certificate by *k* different roots
-(only one anchored), and sweep *k*; and a Federal-Bridge-shaped hierarchy (Common Policy Root → Federal
-Bridge → agency CA → sub-CA → leaf) with decoy partner cross-certificates. Benchmark
-`CertPathBuilder.build` discovery time with warmup and repeats.
+**Method.** Build cross-certified stores where one CA name is issued a certificate by *k* branches, each
+several intermediates deep and only one reaching the anchor, and sweep *k* (breadth) and the branch depth
+separately; plus a Federal-Bridge-shaped hierarchy (Common Policy Root → Federal Bridge → agency CA →
+sub-CA → leaf) with decoy partner cross-certificates. The decoys are deliberately **multi-hop** — three
+intermediates deep — so a candidate cannot be dismissed in one step; a one-hop decoy would let the
+builder prune trivially and would not test whether it explores. Benchmark `CertPathBuilder.build`
+discovery time with warmup and repeats.
 
-**Found.** RQ8 (a **negative result**, and a reassuring one): discovery is essentially flat in *k* — from
-1 to 32 candidate issuers, build time moves < 1.1× even for SLH-DSA. The JDK builder prunes candidates by
-name and trust-anchor priority before verifying signatures, so cross-certificate branching does *not*
-create a post-quantum-amplified blow-up. RQ9: discovery cost is dominated by the per-signature
-verification along the discovered path and scales with path depth — the depth-five SLH-DSA-256F path
-costs ~9 ms to discover versus ~0.2 ms for RSA-3072, reinforcing that SLH-DSA is expensive on CPU as well
-as size, now at the discovery layer too.
+**Found.** RQ8 (a **negative result**, and a reassuring one): discovery is robust to branching even with
+multi-hop decoys. The decisive evidence is the *ordering* by verify cost — as *k* grows 1→32 the
+**slowest verifier (SLH-DSA) is the least amplified** (~1.2×), while cheap-to-verify RSA/ML-DSA grow
+somewhat more; if the builder verified dead-end branches the slow verifier would be hit hardest, so the
+modest growth is store-search overhead, not signature checks. The Federal Bridge model creates no
+post-quantum-amplified path-discovery blow-up in the JDK. RQ9: the cost is in **path depth** — lengthening
+the discovered path from 4 to 7 certificates raises build time ~1.8× uniformly (one more certificate is
+one more verification), at the algorithm's per-verify price, so the depth-five SLH-DSA-256F path costs
+~9 ms versus ~0.2 ms for RSA-3072. The depth experiment also surfaced a third JDK ceiling: the default
+`PKIXBuilderParameters` `maxPathLength` of 5 rejects deeper cross-certified paths outright.
 
 ## 15. Positioning against related work
 

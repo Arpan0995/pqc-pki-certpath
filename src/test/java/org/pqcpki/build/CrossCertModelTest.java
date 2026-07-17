@@ -30,26 +30,31 @@ class CrossCertModelTest {
     @DisplayName("the branching scenario is solvable and its store grows with k")
     void branchingSolvableAndGrows() {
         CrossCertModel model = new CrossCertModel(SEED);
-        var k2 = model.branching(Algorithms.byId("ecdsa-p256"), 2);
-        var k16 = model.branching(Algorithms.byId("ecdsa-p256"), 16);
+        int depth = 3;
+        var k2 = model.branching(Algorithms.byId("ecdsa-p256"), 2, depth);
+        var k16 = model.branching(Algorithms.byId("ecdsa-p256"), 16, depth);
 
         assertEquals(2, k2.candidateIssuers());
         assertEquals(16, k16.candidateIssuers());
-        // pool = k cross-certs + 1 leaf.
-        assertEquals(3, k2.pool().size());
-        assertEquals(17, k16.pool().size());
+        // More candidate branches means a strictly larger store to search.
+        assertTrue(k16.pool().size() > k2.pool().size(),
+                "k=16 pool " + k16.pool().size() + " should exceed k=2 pool " + k2.pool().size());
 
-        // The whole point: a path exists through the one valid cross-certificate among the k candidates.
+        // The whole point: a path exists through the one branch that reaches the anchor.
         CertPath path = new PathBuildBenchmark(k16).buildOnce();
-        assertEquals(2, path.getCertificates().size(), "leaf + valid cross-cert");
+        assertEquals(depth + 2, path.getCertificates().size(), "leaf + bridged + depth intermediates");
     }
 
     @Test
-    @DisplayName("the branching scenario is solvable for a post-quantum algorithm too")
-    void branchingSolvableForPqc() {
-        CrossCertScenario scenario = new CrossCertModel(SEED).branching(Algorithms.byId("ml-dsa-65"), 8);
-        CertPath path = new PathBuildBenchmark(scenario).buildOnce();
-        assertTrue(path.getCertificates().size() >= 2);
+    @DisplayName("multi-hop decoy branches are solvable at every depth 1..5 (no construction off-by-one)")
+    void branchingSolvableAtEveryDepth() {
+        CrossCertModel model = new CrossCertModel(SEED);
+        for (int depth = 1; depth <= 5; depth++) {
+            CrossCertScenario scenario = model.branching(Algorithms.byId("ml-dsa-65"), 4, depth);
+            CertPath path = new PathBuildBenchmark(scenario).buildOnce();
+            assertEquals(depth + 2, path.getCertificates().size(),
+                    "depth " + depth + " should discover a path of depth+2 certificates");
+        }
     }
 
     @Test

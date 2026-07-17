@@ -37,52 +37,97 @@ public final class CrossCertModel {
         this.seed = seed;
     }
 
-    /**
-     * A bridged CA whose name has {@code candidateIssuers} issuer certificates — one from the trust
-     * anchor, the rest from untrusted decoy roots. The builder walking up from the leaf finds all of
-     * them under the same name and must find the one that chains to the anchor.
-     */
+    /** Default depth of each decoy (and real) branch when only the branching factor is being swept. */
+    public static final int DEFAULT_DECOY_DEPTH = 3;
+
+    /** Convenience: a branching scenario with decoy branches of the default depth. */
     public CrossCertScenario branching(AlgorithmSpec spec, int candidateIssuers) {
+        return branching(spec, candidateIssuers, DEFAULT_DECOY_DEPTH);
+    }
+
+    /**
+     * A bridged CA name with {@code candidateIssuers} cross-certificates — one that ultimately reaches
+     * the trust anchor, the rest leading to untrusted decoy roots. Crucially, every branch is
+     * {@code decoyDepth} intermediates deep, so a decoy is not a one-hop dead end the builder can
+     * dismiss immediately: to reject it, the builder must walk the whole branch down to its untrusted
+     * root and back.
+     *
+     * <p>This is the strengthened branching test. If discovery time still does not grow with the number
+     * of such multi-hop candidates, the conclusion is strong: the JDK builder is not exploring — and
+     * therefore not verifying — the dead-end branches at all, so cross-certificate breadth is free
+     * regardless of the signature algorithm. If instead it grows (and grows faster for a slow verifier),
+     * the builder is paying to explore branches it discards.
+     *
+     * @param candidateIssuers how many issuer certificates the bridged name carries (branching factor)
+     * @param decoyDepth       intermediates between the bridged name and each branch's root
+     */
+    public CrossCertScenario branching(AlgorithmSpec spec, int candidateIssuers, int decoyDepth) {
         if (candidateIssuers < 1) {
             throw new IllegalArgumentException("need at least one candidate issuer");
         }
-        String sig = spec.signatureAlgorithm();
-        long s = seed;
-
-        KeyPair anchorKey = KeyPairs.generate(spec, s++);
-        X509Certificate anchor = selfSigned(sig, "CN=Trusted Bridge", anchorKey, s);
-
-        // One bridged CA identity (one key, one name), cross-certified by many issuers.
-        KeyPair bridgedKey = KeyPairs.generate(spec, s++);
-        String bridgedDn = "CN=Bridged Agency CA";
-
-        List<X509Certificate> pool = new ArrayList<>();
-        // Decoy roots each issue a cross-cert for the bridged CA — candidates that go nowhere.
-        for (int i = 1; i < candidateIssuers; i++) {
-            KeyPair decoyRoot = KeyPairs.generate(spec, s++);
-            X509Certificate decoyCross = CertificateIssuer.issue(sig,
-                    "CN=Decoy Partner Root " + i, bridgedDn, BigInteger.valueOf(1000L + i),
-                    bridgedKey.getPublic(), decoyRoot.getPrivate(), PROFILE,
-                    CertificateIssuer.Options.caCert());
-            pool.add(decoyCross);
+        if (decoyDepth < 1) {
+            throw new IllegalArgumentException("decoy depth must be at least 1");
         }
-        // The one that actually chains: issued by the trusted anchor.
-        X509Certificate validCross = CertificateIssuer.issue(sig,
-                "CN=Trusted Bridge", bridgedDn, BigInteger.valueOf(1L),
-                bridgedKey.getPublic(), anchorKey.getPrivate(), PROFILE,
-                CertificateIssuer.Options.caCert());
-        pool.add(validCross);
+        String sig = spec.signatureAlgorithm();
+        long[] s = {seed};
 
-        // The leaf, signed by the bridged CA.
-        KeyPair leafKey = KeyPairs.generate(spec, s++);
-        X509Certificate leaf = CertificateIssuer.issue(sig,
-                bridgedDn, "CN=leaf.agency.test", BigInteger.valueOf(9L),
-                leafKey.getPublic(), bridgedKey.getPrivate(), PROFILE,
+        KeyPair anchorKey = KeyPairs.generate(spec, s[0]++);
+        X509Certificate anchor = selfSigned(sig, "CN=Trusted Bridge", anchorKey, s[0]++);
+
+        KeyPair bridgedKey = KeyPairs.generate(spec, s[0]++);
+        String bridgedDn = "CN=Bridged Agency CA";
+        List<X509Certificate> pool = new ArrayList<>();
+
+        // (k-1) decoy branches, each depth intermediates deep, ending at an untrusted self-signed root.
+        for (int i = 1; i < candidateIssuers; i++) {
+            KeyPair decoyRoot = KeyPairs.generate(spec, s[0]++);
+            pool.add(selfSigned(sig, "CN=Decoy " + i + " Root", decoyRoot, s[0]++));
+            KeyPair bottom = chainDown(spec, sig, pool, "Decoy " + i, decoyDepth,
+                    "CN=Decoy " + i + " Root", decoyRoot, s);
+            // The bridged name, cross-certified by this decoy branch's bottom intermediate.
+            pool.add(CertificateIssuer.issue(sig, "CN=Decoy " + i + " CA " + decoyDepth, bridgedDn,
+                    BigInteger.valueOf(s[0]++), bridgedKey.getPublic(), bottom.getPrivate(), PROFILE,
+                    CertificateIssuer.Options.caCert()));
+        }
+
+        // The real branch: depth intermediates from the anchor down to the bridged name. Added last.
+        KeyPair realBottom = chainDown(spec, sig, pool, "Real", decoyDepth,
+                "CN=Trusted Bridge", anchorKey, s);
+        pool.add(CertificateIssuer.issue(sig, "CN=Real CA " + decoyDepth, bridgedDn,
+                BigInteger.valueOf(s[0]++), bridgedKey.getPublic(), realBottom.getPrivate(), PROFILE,
+                CertificateIssuer.Options.caCert()));
+
+        KeyPair leafKey = KeyPairs.generate(spec, s[0]++);
+        X509Certificate leaf = CertificateIssuer.issue(sig, bridgedDn, "CN=leaf.agency.test",
+                BigInteger.valueOf(s[0]++), leafKey.getPublic(), bridgedKey.getPrivate(), PROFILE,
                 CertificateIssuer.Options.leafCert());
         pool.add(leaf);
 
         return new CrossCertScenario(
-                "branching-k" + candidateIssuers, spec, anchor, leaf, pool, candidateIssuers);
+                "branching-k" + candidateIssuers + "-d" + decoyDepth, spec, anchor, leaf, pool,
+                candidateIssuers);
+    }
+
+    /**
+     * Build a linear chain of {@code depth} CA certificates descending from {@code topIssuerDn} (signed
+     * by {@code topKey}), naming them {@code CN=<label> CA 1 .. <label> CA depth}, adding each to the
+     * pool, and returning the bottom key so the caller can issue the next certificate under it.
+     */
+    private KeyPair chainDown(AlgorithmSpec spec, String sig, List<X509Certificate> pool, String label,
+                              int depth, String topIssuerDn, KeyPair topKey, long[] s) {
+        KeyPair issuerKey = topKey;
+        String issuerDn = topIssuerDn;
+        KeyPair subjectKey = null;
+        for (int level = 1; level <= depth; level++) {
+            subjectKey = KeyPairs.generate(spec, s[0]++);
+            String subjectDn = "CN=" + label + " CA " + level;
+            pool.add(CertificateIssuer.issue(sig, issuerDn, subjectDn, BigInteger.valueOf(s[0]++),
+                    subjectKey.getPublic(), issuerKey.getPrivate(), PROFILE,
+                    CertificateIssuer.Options.caCert()));
+            issuerKey = subjectKey;
+            issuerDn = subjectDn;
+        }
+        return subjectKey;
     }
 
     /**
