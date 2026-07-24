@@ -1,4 +1,4 @@
-# TLS Readiness — Can Java Authenticate with Post-Quantum Certificates?
+# TLS Readiness - Can Java Authenticate with Post-Quantum Certificates?
 
 Generated 2026-07-17T21:34:44.953636Z by `TlsReadiness`.
 
@@ -17,7 +17,7 @@ Generated 2026-07-17T21:34:44.953636Z by `TlsReadiness`.
 
 The two failures are independent: PQC certificates fail on **authentication** regardless of size, and large chains fail on **size** regardless of algorithm. A post-quantum deployment meets the first wall today and the second the moment the first is removed.
 
-## Experiment 1 — Authentication
+## Experiment 1 - Authentication
 
 A real TLS 1.3 handshake with a leaf certificate signed by each algorithm. The question is whether the provider can negotiate the leaf's signature scheme.
 
@@ -39,7 +39,7 @@ A real TLS 1.3 handshake with a leaf certificate signed by each algorithm. The q
 
 Classical algorithms authenticate on both providers. Every ML-DSA, SLH-DSA and composite algorithm fails with a handshake failure: the JSSE providers advertise only classical `signature_algorithms`, so a server holding a post-quantum leaf has no scheme to negotiate. The TLS 1.3 signature-scheme codepoints for these algorithms are still IETF drafts and are unimplemented here.
 
-## Experiment 2 — Size limit
+## Experiment 2 - Size limit
 
 ECDSA certificates (which authenticate) grown to the measured size of each algorithm's real 3-tier chain, so any failure is size alone. The server sends leaf + intermediate.
 
@@ -59,5 +59,5 @@ ECDSA certificates (which authenticate) grown to the measured size of each algor
 | MLDSA65-RSA3072-PSS-SHA512 | 12,424 B | completes |
 | MLDSA87-ECDSA-P521-SHA512 | 15,317 B | completes |
 
-The threshold is `jdk.tls.maxHandshakeMessageSize` (default 32,768 B). Chains at or below it complete; larger ones are rejected with `SSLProtocolException: ... exceeds the maximum allowed size`. Raising the property admits larger chains, so this is a configuration ceiling, not a hard cryptographic limit — but it is the out-of-the-box default a deployment meets first.
+The threshold is `jdk.tls.maxHandshakeMessageSize` (default 32,768 B). Chains at or below it complete; larger ones are rejected with `SSLProtocolException: ... exceeds the maximum allowed size`. Raising the property admits larger chains, so this is a configuration ceiling, not a hard cryptographic limit - but it is the out-of-the-box default a deployment meets first.
 

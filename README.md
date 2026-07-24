@@ -1,7 +1,7 @@
 # pqc-pki-certpath
 
 **Certificates, not handshakes.** A Java measurement of what post-quantum cryptography costs at the
-X.509 **PKI layer** — certificate chain sizes and `CertPath` validation time — rather than at the TLS
+X.509 **PKI layer** - certificate chain sizes and `CertPath` validation time - rather than at the TLS
 handshake, where almost all PQC measurement has focused.
 
 Every certificate in a chain carries a signature, and a real chain has several: a leaf signed by an
@@ -13,21 +13,21 @@ JDK's `PKIX` validator takes to validate it.
 ## Status
 
 Harness built and validated; benchmark run. 13 algorithms × 3 tier depths, results in
-[`results/`](results/). The pre-registered design — research questions, algorithm set, size thresholds,
-and hypotheses — is in [`docs/EXPERIMENT-DESIGN.md`](docs/EXPERIMENT-DESIGN.md); **read that first.**
+[`results/`](results/). The pre-registered design - research questions, algorithm set, size thresholds,
+and hypotheses - is in [`docs/EXPERIMENT-DESIGN.md`](docs/EXPERIMENT-DESIGN.md); **read that first.**
 
-## The headline: for ML-DSA the cost is bytes not CPU — but SLH-DSA costs both
+## The headline: for ML-DSA the cost is bytes not CPU - but SLH-DSA costs both
 
 The usual PQC narrative is about compute. At the PKI/validation layer, that framing is right for one
 family and wrong for the other, and the split is the finding (measured on JDK 21 + BouncyCastle 1.85):
 
-- **ML-DSA — bytes, not CPU.** Path validation only *verifies*, and ML-DSA verification is genuinely
+- **ML-DSA - bytes, not CPU.** Path validation only *verifies*, and ML-DSA verification is genuinely
   cheap: a 3-tier ML-DSA-65 chain validates in ~160 µs, *faster* than the same ECDSA P-256 chain
   (~530 µs) and within ~2× of RSA-3072, while being ~17× the size. For ML-DSA, the migration cost is
   purely the extra bytes.
-- **SLH-DSA — bytes *and* CPU.** Its signatures are enormous *and* its verification is milliseconds:
-  1–5 ms per validation, up to ~55× the RSA-3072 baseline. For the high-security fast variants the
-  relative CPU penalty actually *rivals* the (already order-of-magnitude) size penalty — so the tidy
+- **SLH-DSA - bytes *and* CPU.** Its signatures are enormous *and* its verification is milliseconds:
+  1-5 ms per validation, up to ~55× the RSA-3072 baseline. For the high-security fast variants the
+  relative CPU penalty actually *rivals* the (already order-of-magnitude) size penalty - so the tidy
   "PQC verification is free" story does not survive contact with SLH-DSA-256F.
 
 This nuance is why the pre-registered hypothesis H2 ("the PKI-layer cost is bytes, not CPU") comes back
@@ -38,7 +38,7 @@ is what made the distinction visible rather than glossed over. See
 On size, the story is uniform and dramatic:
 
 - A 3-tier chain grows from ~650 bytes (ECDSA P-256) to ~11 KB (ML-DSA-65) to ~35 KB (SLH-DSA-SHA2-128F)
-  to ~100 KB (SLH-DSA-SHA2-256F) — up to ~150× classical.
+  to ~100 KB (SLH-DSA-SHA2-256F) - up to ~150× classical.
 - A single SLH-DSA-SHA2-128F certificate (~17 KB) exceeds one TLS record (16,384 B); a 3-tier chain of
   it (~35 KB) exceeds the JDK's default maximum handshake message size (32,768 B).
 - Where the bytes go differs sharply by family: an ML-DSA certificate splits its size between a large
@@ -55,38 +55,38 @@ those gaps with real handshakes and real path discovery. Findings in
 [`results/TLS-READINESS.md`](results/TLS-READINESS.md), [`results/PATH-BUILDING.md`](results/PATH-BUILDING.md),
 and [`results/FINDINGS.md`](results/FINDINGS.md):
 
-- **Java can't authenticate with PQC certificates at all yet — before size is even the problem.** Driving
+- **Java can't authenticate with PQC certificates at all yet - before size is even the problem.** Driving
   real TLS 1.3 handshakes, *every* ML-DSA/SLH-DSA/composite leaf fails on **both** JSSE providers
   (`SunJSSE` and BouncyCastle's `BCJSSE`) with `handshake_failure`; classical controls pass. The cause is
   authentication, not size: JSSE advertises only classical `signature_algorithms` (the PQC TLS 1.3
   codepoints are still IETF drafts). And when a chain is grown to real PQC sizes with classical signatures,
   the SLH-DSA-`f`-sized chains (~34 KB+) fail with `SSLProtocolException: ... exceeds the maximum allowed
-  size (32768)` — the two walls a deployment hits, in order.
+  size (32768)` - the two walls a deployment hits, in order.
 - **Path building is robust to cross-cert branching, but inherits the PQC verify cost with depth.** Over
-  Federal-Bridge-shaped cross-certified stores — with **multi-hop decoy branches** that can't be pruned
-  in one step — `CertPathBuilder` discovery time stays flat as a bridged name's candidate-issuer count
+  Federal-Bridge-shaped cross-certified stores - with **multi-hop decoy branches** that can't be pruned
+  in one step - `CertPathBuilder` discovery time stays flat as a bridged name's candidate-issuer count
   grows 1→32. The tell is that the *slowest* verifier (SLH-DSA) is the *least* amplified, so the builder
   isn't verifying dead ends (reassuring for FPKI). The cost is instead in path depth: a realistic depth-5
-  bridged path costs ~9 ms to discover for SLH-DSA-256F vs ~0.2 ms for RSA-3072 — the "bytes *and* CPU"
+  bridged path costs ~9 ms to discover for SLH-DSA-256F vs ~0.2 ms for RSA-3072 - the "bytes *and* CPU"
   cost of SLH-DSA, at the discovery layer. (A third JDK ceiling also appears: the default PKIX
   `maxPathLength` of 5 rejects deeper cross-certified paths outright.)
-- **The newest JDK doesn't fix it — and how it doesn't is the point.** JDK 27 ships JEP 527, the first
+- **The newest JDK doesn't fix it - and how it doesn't is the point.** JDK 27 ships JEP 527, the first
   post-quantum TLS support, yet PQC certificate authentication *still* fails there
   ([`results/TLS-READINESS-jdk27.md`](results/TLS-READINESS-jdk27.md)). Reading each JDK's supported
   `SSLParameters`: JDK 27 adds ML-KEM key exchange (`X25519MLKEM768`) but its signature schemes stay
   entirely classical. JEP 527 delivers the *key-exchange* half of the transition and leaves the
-  *authentication* half — the certificate/PKI layer this study measures — untouched.
+  *authentication* half - the certificate/PKI layer this study measures - untouched.
 
 ## What is measured
 
 For each algorithm and tier depth (2/3/4 = root→leaf, root→intermediate→leaf, and one deeper):
 
-- **Chain size** — the transmitted chain (leaf + intermediates; the root is a trust anchor, never sent),
+- **Chain size** - the transmitted chain (leaf + intermediates; the root is a trust anchor, never sent),
   and the full hierarchy.
-- **Size decomposition** — each certificate split into public key / signature / fixed X.509 overhead.
-- **Validation time** — the JDK's own `PKIX` `CertPathValidator`, warmed up and repeated, reported as
+- **Size decomposition** - each certificate split into public key / signature / fixed X.509 overhead.
+- **Validation time** - the JDK's own `PKIX` `CertPathValidator`, warmed up and repeated, reported as
   median and inter-quartile range (timing is skewed, so not the mean).
-- **Threshold crossings** — measured chain size against the TLS record limit and the JDK handshake
+- **Threshold crossings** - measured chain size against the TLS record limit and the JDK handshake
   message limit.
 
 The JDK validator is used deliberately: it is what a standard Java application uses, and it validates

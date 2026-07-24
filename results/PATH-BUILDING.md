@@ -1,4 +1,4 @@
-# Path Building — CertPathBuilder over Cross-Certified (FPKI-Shaped) Hierarchies
+# Path Building - CertPathBuilder over Cross-Certified (FPKI-Shaped) Hierarchies
 
 Generated 2026-07-17T20:49:51.861145Z by `PathBuilding`.
 
@@ -14,9 +14,9 @@ Build times are host- and JIT-specific; reported as median over the measured ite
 
 ## Headline
 
-Path discovery is **robust to cross-certificate branching, even with multi-hop decoys**. As a bridged name's candidate issuers grow 1→32, the *slowest* verifier (SLH-DSA-SHA2-256F) barely moves (1.2×) — the tell that the JDK builder does not verify the dead-end branches, because if it did, the slow verifier would blow up most. Faster algorithms show only minor store-search overhead. The cost is instead in **path depth**: over the depth sweep the discovered path grows from 4 to 7 certificates and build time rises ~1.8× across every algorithm, because each certificate on the found path is one signature to verify. That depth cost is per-algorithm: on the realistic Federal-Bridge path, discovery costs 9423 µs for SLH-DSA-SHA2-256F versus 187 µs for RSA-3072.
+Path discovery is **robust to cross-certificate branching, even with multi-hop decoys**. As a bridged name's candidate issuers grow 1→32, the *slowest* verifier (SLH-DSA-SHA2-256F) barely moves (1.2×) - the tell that the JDK builder does not verify the dead-end branches, because if it did, the slow verifier would blow up most. Faster algorithms show only minor store-search overhead. The cost is instead in **path depth**: over the depth sweep the discovered path grows from 4 to 7 certificates and build time rises ~1.8× across every algorithm, because each certificate on the found path is one signature to verify. That depth cost is per-algorithm: on the realistic Federal-Bridge path, discovery costs 9423 µs for SLH-DSA-SHA2-256F versus 187 µs for RSA-3072.
 
-## Breadth sweep — build time vs candidate issuers (multi-hop decoys)
+## Breadth sweep - build time vs candidate issuers (multi-hop decoys)
 
 A bridged CA name issued a certificate by *k* branches, each several intermediates deep, only one reaching the anchor. Median build time (µs):
 
@@ -28,9 +28,9 @@ A bridged CA name issued a certificate by *k* branches, each several intermediat
 | SLH-DSA-SHA2-128F | 7811 | 7858 | 7759 | 7858 | 8241 | 9109 |
 | SLH-DSA-SHA2-256F | 11890 | 11852 | 11837 | 12547 | 13025 | 13988 |
 
-The decisive comparison is by verify cost: the SLH-DSA rows (slow to verify) stay nearly flat, while the cheap-to-verify rows (RSA, ECDSA) actually grow *more* in relative terms. That is the opposite of what verifying decoys would produce — a slow verifier would be hit hardest — so the small growth is store-search overhead (more certificates to index and name-match), not signature checks on dead-end branches. The plausible combinatorial blow-up of cross-certification does not occur in the JDK.
+The decisive comparison is by verify cost: the SLH-DSA rows (slow to verify) stay nearly flat, while the cheap-to-verify rows (RSA, ECDSA) actually grow *more* in relative terms. That is the opposite of what verifying decoys would produce - a slow verifier would be hit hardest - so the small growth is store-search overhead (more certificates to index and name-match), not signature checks on dead-end branches. The plausible combinatorial blow-up of cross-certification does not occur in the JDK.
 
-## Depth sweep — build time vs discovered path length
+## Depth sweep - build time vs discovered path length
 
 At a fixed branching factor, lengthening the real path. Columns are the number of certificates in the discovered path. Median build time (µs):
 
@@ -42,9 +42,9 @@ At a fixed branching factor, lengthening the real path. Columns are the number o
 | SLH-DSA-SHA2-128F | 6370 | 7848 | 9564 | 10859 |
 | SLH-DSA-SHA2-256F | 9565 | 12255 | 15018 | 17445 |
 
-Here cost rises with depth, and faster for slower verifiers — each additional certificate on the path is one more signature to check. This is where the post-quantum verification cost enters path building: linearly in path length, at the algorithm's per-verify price.
+Here cost rises with depth, and faster for slower verifiers - each additional certificate on the path is one more signature to check. This is where the post-quantum verification cost enters path building: linearly in path length, at the algorithm's per-verify price.
 
-## Federal Bridge — realistic depth-5 cross-certified path
+## Federal Bridge - realistic depth-5 cross-certified path
 
 A Common Policy Root cross-certifies a Federal Bridge CA (whose name also carries decoy partner cross-certificates), which anchors an agency CA, a sub-CA, and the leaf. The concrete migration cost per algorithm:
 

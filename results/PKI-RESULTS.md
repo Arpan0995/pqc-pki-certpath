@@ -1,4 +1,4 @@
-# PQC at the PKI Layer — Chain Sizes and CertPath Validation Cost
+# PQC at the PKI Layer - Chain Sizes and CertPath Validation Cost
 
 Generated 2026-07-17T19:48:41.160506Z by `Benchmark`.
 
@@ -11,11 +11,11 @@ Generated 2026-07-17T19:48:41.160506Z by `Benchmark`.
 | Key-generation seed | `20260717` |
 | Validation warmup / measured | 200 / 2000 iterations |
 
-Certificate sizes are deterministic per parameter set and are host-independent. Validation times are host- and JIT-specific — reported as median and inter-quartile range over the measured iterations, on the host above.
+Certificate sizes are deterministic per parameter set and are host-independent. Validation times are host- and JIT-specific - reported as median and inter-quartile range over the measured iterations, on the host above.
 
 ## Headline
 
-At the primary 3-tier depth, a transmitted certificate chain grows from **653 bytes** (ECDSA P-256) to **100,213 bytes** (SLH-DSA-SHA2-256F) — a **153×** increase. 3 algorithm(s) produce a single certificate larger than one TLS record (16,384 B).
+At the primary 3-tier depth, a transmitted certificate chain grows from **653 bytes** (ECDSA P-256) to **100,213 bytes** (SLH-DSA-SHA2-256F) - a **153×** increase. 3 algorithm(s) produce a single certificate larger than one TLS record (16,384 B).
 
 ## Chain sizes (3-tier: root → intermediate → leaf)
 
@@ -100,7 +100,7 @@ Median per-validation time with the inter-quartile range; the JDK PKIX validator
 
 ## Scaling with tier depth
 
-Transmitted chain size by tier count, per algorithm — a linear rise means each added tier adds one certificate of roughly constant size.
+Transmitted chain size by tier count, per algorithm - a linear rise means each added tier adds one certificate of roughly constant size.
 
 | Algorithm | 2-tier | 3-tier | 4-tier |
 |---|---:|---:|---:|
@@ -125,12 +125,12 @@ Fixed in the design before data collection (§4), scored mechanically from the n
 | | Verdict | Evidence |
 |---|---|---|
 | **H1** | supported | largest PQC chain is 153.5× the classical baseline (100213 vs 653 B); SLH-DSA 'f' cert > 16,384 B: true; SLH-DSA 'f' 3-tier chain > 32,768 B: true. |
-| **H2** | not supported | ML-DSA-65 validation is 1.7× classical (threshold ≤ 5×); across PQC, the worst size penalty is 51× vs the worst time penalty 52.1× — size exceeds CPU by 1.0× (threshold ≥ 5×). |
+| **H2** | not supported | ML-DSA-65 validation is 1.7× classical (threshold ≤ 5×); across PQC, the worst size penalty is 51× vs the worst time penalty 52.1× - size exceeds CPU by 1.0× (threshold ≥ 5×). |
 | **H3** | supported | MLDSA65-ECDSA-P384 chain is 1.04× the pure ML-DSA-65 chain (11299 vs 10905 B); supported when between 1.0× and 1.5×. |
 | **H4** | supported | ML-DSA-65 transmitted bytes 2/3/4 tiers = 5446/10905/16364; ratios to 2-tier are 2.00 and 3.00 (linear predicts 2.00 and 3.00, ±0.15). |
 
-- **H1** — PQC chains are at least an order of magnitude larger than classical; every SLH-DSA 'f' certificate exceeds one TLS record (16,384 B); a 3-tier SLH-DSA 'f' chain exceeds the JDK max handshake message (32,768 B).
-- **H2** — ML-DSA path validation is within a small factor of classical, and the relative size penalty of PQC dwarfs its relative validation-time penalty: the PKI-layer cost is bytes, not CPU.
-- **H3** — A composite (PQC + classical) chain costs its ML-DSA component plus a modest classical increment — closer to pure ML-DSA than to double it.
-- **H4** — Total chain size scales linearly with tier depth: each added tier adds one more transmitted certificate of roughly constant size.
+- **H1** - PQC chains are at least an order of magnitude larger than classical; every SLH-DSA 'f' certificate exceeds one TLS record (16,384 B); a 3-tier SLH-DSA 'f' chain exceeds the JDK max handshake message (32,768 B).
+- **H2** - ML-DSA path validation is within a small factor of classical, and the relative size penalty of PQC dwarfs its relative validation-time penalty: the PKI-layer cost is bytes, not CPU.
+- **H3** - A composite (PQC + classical) chain costs its ML-DSA component plus a modest classical increment - closer to pure ML-DSA than to double it.
+- **H4** - Total chain size scales linearly with tier depth: each added tier adds one more transmitted certificate of roughly constant size.
 
